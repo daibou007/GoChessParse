@@ -1,11 +1,11 @@
 # We# Web 框架及其依赖
-Flask==2.0.1                  # Python Web框架核心
+Flask==1.1.1                  # Python Web框架核心
 Flask-Bootstrap==3.3.7.1      # Bootstrap前端集成
-Flask-WTF==1.0.0             # Flask表单处理
-Werkzeug==2.0.1              # WSGI工具库
-Jinja2==3.0.1                # 模板引擎
-itsdangerous==2.0.1          # 安全数据序列化
-WTForms==3.0.0               # 表单验证和渲染
+Flask-WTF==0.14.2            # Flask表单处理
+Werkzeug==2.0.3              # WSGI工具库
+Jinja2==3.0.3               # 模板引擎
+itsdangerous==1.1.0          # 安全数据序列化
+WTForms==2.2.1               # 表单验证和渲染
 visitor==0.1.3               # 访问者模式实现
 dominate==2.9.1              # HTML文档生成器
 
@@ -13,9 +13,15 @@ dominate==2.9.1              # HTML文档生成器
 tensorflow==2.5.0             # 深度学习框架
 tensorflow-estimator==2.5.0   # 模型训练API
 tensorboard==2.5.0           # 可视化工具
-tensorflow-addons==0.13.0     # TensorFlow扩展功能
-tensorflow-hub==0.12.0        # 模型复用平台
-protobuf==3.20.3             # 协议缓冲区
+tensorboard-data-server==0.6.1 # TensorBoard数据服务
+tensorboard-plugin-wit==1.8.1  # TensorBoard插件
+tf-models-official==2.5.0     # TensorFlow官方模型
+tf-slim==1.1.0               # 轻量级模型库
+tensorflow-addons==0.23.0     # TensorFlow扩展功能
+tensorflow-datasets==4.9.3    # 数据集工具
+tensorflow-hub==0.16.1        # 模型复用平台
+tensorflow-metadata==1.16.1   # 元数据工具
+tensorflow-model-optimization==0.7.3 # 模型优化工具
 
 # 机器学习和数据处理
 numpy==1.19.5                # 数值计算库
@@ -45,8 +51,10 @@ google-resumable-media==2.7.2 # 可恢复媒体上传
 googleapis-common-protos==1.69.1 # API通用协议
 
 # 工具和辅助库
+Click==7.0                   # 命令行工具
 six==1.15.0                  # Python 2/3兼容
 wrapt==1.12.1               # 装饰器工具
+protobuf==3.20.3            # 协议缓冲区
 grpcio==1.34.1              # RPC框架
 absl-py==0.15.0             # Google工具库
 astor==0.8.1                # AST操作

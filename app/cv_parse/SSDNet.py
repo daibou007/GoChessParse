@@ -2,67 +2,130 @@ import cv2
 import numpy as np
 import tensorflow as tf
 from object_detection.utils import label_map_util
-
+import os
+from google.protobuf import text_format
+from object_detection.protos import string_int_label_map_pb2
 
 class SSDNet:
+
     def __init__(self, frozen_graph_path, pbtxt_path):
         '''
-
-        :param frozen_graph_path:
-        :param pbtxt_path:
+        初始化 SSD 网络检测器
+        Args:
+            frozen_graph_path: 训练好的模型权重文件路径（.pb文件）
+            pbtxt_path: 标签映射文件路径（.pbtxt文件）
         '''
-        self.__load_frozen_graph__(frozen_graph_path)
-        self.__sess__, self.tensor_dict, self.image_tensor = self.__load_tensor__()
-        self.__category_index__ = label_map_util.create_category_index_from_labelmap(pbtxt_path, use_display_name=True)
+        try:
+            self.model = self.__load_model__(frozen_graph_path)
+            self.__category_index__ = self.__load_label_map__(pbtxt_path)
+        except Exception as e:
+            raise RuntimeError(f"模型加载失败: {str(e)}")
 
-    def __load_frozen_graph__(self, frozen_graph_path):
+    def __load_label_map__(self, pbtxt_path):
+        '''加载标签映射文件
+        Args:
+            pbtxt_path: 标签映射文件路径（.pbtxt文件）
+        Returns:
+            category_index: 类别索引字典
         '''
+        if not os.path.exists(pbtxt_path):
+            raise FileNotFoundError(f"标签映射文件不存在: {pbtxt_path}")
+            
+        try:
+            from object_detection.utils import label_map_util
+            from object_detection.protos import string_int_label_map_pb2
+            from google.protobuf import text_format
+            
+            with tf.io.gfile.GFile(pbtxt_path, 'r') as fid:
+                label_map_string = fid.read()
+                label_map = string_int_label_map_pb2.StringIntLabelMap()
+                try:
+                    text_format.Merge(label_map_string, label_map)
+                except text_format.ParseError:
+                    label_map.ParseFromString(label_map_string)
+            
+            return label_map_util.create_category_index(
+                label_map_util.convert_label_map_to_categories(
+                    label_map, max_num_classes=90, use_display_name=True))
+                    
+        except Exception as e:
+            raise RuntimeError(f"标签映射文件加载失败: {str(e)}")
 
-        :param frozen_graph_path:
-        :return:
-        '''
-        self.detection_graph = tf.Graph()
-        with self.detection_graph.as_default():
-            od_graph_def = tf.GraphDef()
-            with tf.gfile.GFile(frozen_graph_path, 'rb') as fid:
+
+    def __load_model__(self, model_path):
+        '''加载模型，支持 .pb 和 SavedModel 格式'''
+        if not os.path.exists(model_path):
+            raise FileNotFoundError(f"模型文件不存在: {model_path}")
+        
+        # 尝试加载 SavedModel 格式
+        if os.path.isdir(model_path):
+            return tf.saved_model.load(model_path)
+        
+        # 加载 .pb 格式
+        detection_graph = tf.Graph()
+        with detection_graph.as_default():
+            graph_def = tf.compat.v1.GraphDef()
+            with open(model_path, 'rb') as fid:
                 serialized_graph = fid.read()
-                od_graph_def.ParseFromString(serialized_graph)
-                tf.import_graph_def(od_graph_def, name='')
-
-    def __load_tensor__(self):
-        '''
-
-        :return:
-        '''
-        graph = self.detection_graph
-        with graph.as_default():
-            sess = tf.Session()
-            ops = tf.get_default_graph().get_operations()
-            all_tensor_names = {output.name for op in ops for output in op.outputs}
+                graph_def.ParseFromString(serialized_graph)
+                tf.import_graph_def(graph_def, name='')
+            
+            # 创建会话
+            sess = tf.compat.v1.Session(graph=detection_graph)
+            
+            # 获取必要的张量
             tensor_dict = {}
-            for key in [
-                'num_detections', 'detection_boxes', 'detection_scores',
-                'detection_classes', 'detection_masks'
-            ]:
+            for key in ['num_detections', 'detection_boxes', 'detection_scores', 'detection_classes']:
                 tensor_name = key + ':0'
-                if tensor_name in all_tensor_names:
-                    tensor_dict[key] = tf.get_default_graph().get_tensor_by_name(
-                        tensor_name)
-            if 'detection_masks' in tensor_dict:
-                detection_boxes = tf.squeeze(tensor_dict['detection_boxes'], [0])
-                detection_masks = tf.squeeze(tensor_dict['detection_masks'], [0])
-                real_num_detection = tf.cast(tensor_dict['num_detections'][0], tf.int32)
-                detection_boxes = tf.slice(detection_boxes, [0, 0], [real_num_detection, -1])
-                detection_masks = tf.slice(detection_masks, [0, 0, 0], [real_num_detection, -1, -1])
-            image_tensor = tf.get_default_graph().get_tensor_by_name('image_tensor:0')
-            return sess, tensor_dict, image_tensor
+                tensor_dict[key] = detection_graph.get_tensor_by_name(tensor_name)
+            
+            image_tensor = detection_graph.get_tensor_by_name('image_tensor:0')
+            
+            # 返回一个包装了会话和张量的对象
+            return type('Model', (), {
+                'sess': sess,
+                'tensor_dict': tensor_dict,
+                'image_tensor': image_tensor,
+                '__call__': lambda self, x: sess.run(tensor_dict, feed_dict={image_tensor: x})
+            })()
+
+    def __old_load_label_map__(self, pbtxt_path):
+        '''加载标签映射文件
+        Args:
+            pbtxt_path: 标签映射文件路径（.pbtxt文件）
+        Returns:
+            category_index: 类别索引字典
+        '''
+        if not os.path.exists(pbtxt_path):
+            raise FileNotFoundError(f"标签映射文件不存在: {pbtxt_path}")
+            
+        try:
+            from object_detection.utils import label_map_util
+            return label_map_util.create_category_index_from_labelmap(
+                pbtxt_path, use_display_name=True)
+        except Exception as e:
+            raise RuntimeError(f"标签映射文件加载失败: {str(e)}")
 
     def __forward__(self, image):
-        '''
-        :param image:
-        :return:
-        '''
-        return self.__sess__.run(self.tensor_dict, feed_dict={self.image_tensor: image})
+        '''执行推理，支持两种模型格式'''
+        if image is None or not isinstance(image, np.ndarray):
+            raise ValueError("输入必须是有效的numpy数组")
+        
+        if len(image.shape) != 4:
+            raise ValueError("输入维度必须是4维 [batch_size, height, width, channels]")
+        
+        # 执行推理
+        detections = self.model(image)
+        
+        # 统一返回格式
+        return {
+            'num_detections': detections['num_detections'] if isinstance(detections, dict) else detections[0],
+            'detection_boxes': detections['detection_boxes'] if isinstance(detections, dict) else detections[1],
+            'detection_scores': detections['detection_scores'] if isinstance(detections, dict) else detections[2],
+            'detection_classes': detections['detection_classes'].astype(np.uint8) if isinstance(detections, dict) else detections[3].astype(np.uint8)
+        }
+
+    # ... 其他方法保持不变 ...
 
     def __split_image__(self, InputArray):
         '''
@@ -135,6 +198,41 @@ class SSDNet:
         return center_list
 
     def __get_chess_pieces_position__(self, InputImage_shape, forward_result, beshowed_threshold=0.1):
+        '''
+        获取棋子位置
+        '''
+        h, w = InputImage_shape[0], InputImage_shape[1]
+        chess_pieces_num = 0
+        center_list = []
+        for index, result in enumerate(forward_result['detection_scores']):
+            if result < beshowed_threshold:
+                break
+            rect = forward_result['detection_boxes'][index]
+            class_id = forward_result['detection_classes'][index]
+            
+            # 确保类别ID存在于category_index中
+            if class_id not in self.__category_index__:
+                continue
+                
+            try:
+                pt1 = (int(rect[1] * w), int(rect[0] * h))
+                pt2 = (int(rect[3] * w), int(rect[2] * h))
+                center = (
+                    (pt1[0] + pt2[0]) // 2, 
+                    (pt1[1] + pt2[1]) // 2, 
+                    class_id,  # 使用类别ID而不是类别名称
+                    pt1, 
+                    pt2
+                )
+                center_list.append(center)
+                chess_pieces_num += 1
+            except (TypeError, IndexError) as e:
+                print(f"处理检测框时出错: {e}")
+                continue
+                
+        return center_list
+
+    def __old_get_chess_pieces_position__(self, InputImage_shape, forward_result, beshowed_threshold=0.1):
         '''
 
         :param InputImage_shape:
